@@ -5,7 +5,8 @@ export default async function handler(req, res) {
 
   const { prompt, systemInstruction = "" } = req.body || {};
   const apiKey = globalThis.process?.env?.GEMINI_API_KEY;
-  const modelName = "gemini-1.5-flash";
+  const modelName =
+    globalThis.process?.env?.GEMINI_MODEL?.trim() || "gemini-2.0-flash";
 
   if (!apiKey) {
     return res.status(500).json({ error: "Missing GEMINI_API_KEY" });
@@ -30,8 +31,9 @@ export default async function handler(req, res) {
 
     const data = await response.json();
     if (!response.ok) {
-      console.error("Google API error:", JSON.stringify(data));
-      return res.status(response.status).json({ error: data?.error?.message || "Gemini request failed", detail: data });
+      return res.status(response.status).json({
+        error: data?.error?.message || "Gemini request failed",
+      });
     }
 
     const text = data?.candidates?.[0]?.content?.parts?.[0]?.text || "暂无结果";
