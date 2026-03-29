@@ -1,0 +1,9 @@
+cd "/Users/maoyu/探索/within-light-cone"
+
+git init
+git add .
+git commit -m "init personal site with Gemini proxy"
+
+git branch -M main
+git remote add origin https://github.com/mountaindreamer/Within-Light-Cone.git
+git push -u origin main
