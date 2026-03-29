@@ -10,29 +10,17 @@ import {
 } from "lucide-react";
 
 const fetchGemini = async (prompt, systemInstruction = "") => {
-  let delay = 1000;
-  for (let i = 0; i < 5; i += 1) {
-    try {
-      const response = await fetch("/api/gemini", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, systemInstruction }),
-      });
-      if (!response.ok) {
-        if (i === 4) {
-          throw new Error("Gemini API request failed");
-        }
-      } else {
-        const result = await response.json();
-        return result.text ?? "抱歉，未获取到有效结果。";
-      }
-    } catch (error) {
-      if (i === 4) throw error;
-    }
-    await new Promise((resolve) => setTimeout(resolve, delay));
-    delay *= 2;
+  const response = await fetch("/api/gemini", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt, systemInstruction }),
+  });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const msg = result.error || `请求失败（HTTP ${response.status}）`;
+    throw new Error(msg);
   }
-  return "抱歉，因果连接暂时中断，请稍后重试。";
+  return result.text ?? "抱歉，未获取到有效结果。";
 };
 
 const App = () => {
@@ -49,6 +37,8 @@ const App = () => {
     try {
       const result = await fetchGemini(input, system);
       setOutput(result);
+    } catch (e) {
+      setOutput(e instanceof Error ? e.message : "请求失败，请稍后重试。");
     } finally {
       setLoading(false);
     }
@@ -62,6 +52,8 @@ const App = () => {
     try {
       const result = await fetchGemini(`将这个想法优化为视觉提示词：${input}`, system);
       setOutput(result);
+    } catch (e) {
+      setOutput(e instanceof Error ? e.message : "请求失败，请稍后重试。");
     } finally {
       setLoading(false);
     }
@@ -75,6 +67,8 @@ const App = () => {
     try {
       const result = await fetchGemini(input, system);
       setOutput(result);
+    } catch (e) {
+      setOutput(e instanceof Error ? e.message : "请求失败，请稍后重试。");
     } finally {
       setLoading(false);
     }
