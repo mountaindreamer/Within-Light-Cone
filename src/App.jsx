@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import {
   LucideCompass,
   LucideLayers,
@@ -7,7 +7,38 @@ import {
   LucideMessageSquare,
   LucideRefreshCw,
   LucideArrowRight,
+  LucideHistory,
+  LucideTrash2,
 } from "lucide-react";
+
+const STORAGE_KEY = "within-light-cone:v1";
+
+const defaultDrafts = () => ({
+  refractor: "",
+  prompt: "",
+  dialogue: "",
+});
+
+const defaultOutputs = () => ({
+  refractor: "",
+  prompt: "",
+  dialogue: "",
+});
+
+function loadPersisted() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const data = JSON.parse(raw);
+    return {
+      drafts: { ...defaultDrafts(), ...data.drafts },
+      outputs: { ...defaultOutputs(), ...data.outputs },
+      history: Array.isArray(data.history) ? data.history : [],
+    };
+  } catch {
+    return null;
+  }
+}
 
 const fetchGemini = async (prompt, systemInstruction = "") => {
   const response = await fetch("/api/gemini", {
@@ -23,52 +54,109 @@ const fetchGemini = async (prompt, systemInstruction = "") => {
   return result.text ?? "抱歉，未获取到有效结果。";
 };
 
+const tabLabel = (tab) =>
+  tab === "refractor" ? "因果折射" : tab === "prompt" ? "提示词进化" : "游离对话";
+
 const App = () => {
+  const initial = loadPersisted();
   const [activeTab, setActiveTab] = useState("refractor");
-  const [input, setInput] = useState("");
-  const [output, setOutput] = useState("");
+  const [drafts, setDrafts] = useState(initial?.drafts ?? defaultDrafts());
+  const [outputs, setOutputs] = useState(initial?.outputs ?? defaultOutputs());
+  const [history, setHistory] = useState(initial?.history ?? []);
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ drafts, outputs, history }),
+      );
+    } catch {
+      /* ignore quota */
+    }
+  }, [drafts, outputs, history]);
+
+  const input = drafts[activeTab];
+  const output = outputs[activeTab];
+
+  const setInputForTab = useCallback((tab, value) => {
+    setDrafts((d) => ({
+      ...d,
+      [tab]: typeof value === "function" ? value(d[tab]) : value,
+    }));
+  }, []);
+
+  const pushHistory = useCallback((tab, inputText, outputText) => {
+    const id =
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setHistory((h) =>
+      [
+        {
+          id,
+          tab,
+          input: inputText,
+          output: outputText,
+          at: new Date().toISOString(),
+        },
+        ...h,
+      ].slice(0, 50),
+    );
+  }, []);
+
   const handleRefract = async () => {
-    if (!input.trim()) return;
+    const tab = activeTab;
+    const text = drafts[tab];
+    if (!text.trim()) return;
     setLoading(true);
     const system =
       "你是一个深邃的思想折射仪。对于用户输入的任何主题，请从：1. 心理疗愈（Healing）、2. 哲学思辨（Philosophy）、3. 商业观察（Business）、4. 投资逻辑（Investment）这四个维度给出一段极其简约、清冷且深刻的洞察。语言风格要符合‘光锥之内’的品牌格调。";
     try {
-      const result = await fetchGemini(input, system);
-      setOutput(result);
+      const result = await fetchGemini(text, system);
+      setOutputs((o) => ({ ...o, [tab]: result }));
+      pushHistory(tab, text, result);
     } catch (e) {
-      setOutput(e instanceof Error ? e.message : "请求失败，请稍后重试。");
+      const err = e instanceof Error ? e.message : "请求失败，请稍后重试。";
+      setOutputs((o) => ({ ...o, [tab]: err }));
     } finally {
       setLoading(false);
     }
   };
 
   const handleRefinePrompt = async () => {
-    if (!input.trim()) return;
+    const tab = activeTab;
+    const text = drafts[tab];
+    if (!text.trim()) return;
     setLoading(true);
     const system =
       "你是一个顶级视觉设计师。用户会给你一个简单的构思，请你将其转化为一段极其专业、充满‘简约的复杂感’的 AI 绘图提示词（Prompt）。关键词：High-key, glass textures, translucent, refracted light, minimalist complexity, 8k, serene. 只需要输出英文 Prompt 内容。";
     try {
-      const result = await fetchGemini(`将这个想法优化为视觉提示词：${input}`, system);
-      setOutput(result);
+      const result = await fetchGemini(`将这个想法优化为视觉提示词：${text}`, system);
+      setOutputs((o) => ({ ...o, [tab]: result }));
+      pushHistory(tab, text, result);
     } catch (e) {
-      setOutput(e instanceof Error ? e.message : "请求失败，请稍后重试。");
+      const err = e instanceof Error ? e.message : "请求失败，请稍后重试。";
+      setOutputs((o) => ({ ...o, [tab]: err }));
     } finally {
       setLoading(false);
     }
   };
 
   const handleDialogue = async () => {
-    if (!input.trim()) return;
+    const tab = activeTab;
+    const text = drafts[tab];
+    if (!text.trim()) return;
     setLoading(true);
     const system =
       "你是一位保持客观、克制、清醒距离感的对话者。请围绕用户问题进行哲学与现实的双向分析，语言简洁、不过度煽情，不给绝对结论，而是给可执行的思考路径。";
     try {
-      const result = await fetchGemini(input, system);
-      setOutput(result);
+      const result = await fetchGemini(text, system);
+      setOutputs((o) => ({ ...o, [tab]: result }));
+      pushHistory(tab, text, result);
     } catch (e) {
-      setOutput(e instanceof Error ? e.message : "请求失败，请稍后重试。");
+      const err = e instanceof Error ? e.message : "请求失败，请稍后重试。";
+      setOutputs((o) => ({ ...o, [tab]: err }));
     } finally {
       setLoading(false);
     }
@@ -78,6 +166,27 @@ const App = () => {
     if (activeTab === "refractor") return handleRefract();
     if (activeTab === "prompt") return handleRefinePrompt();
     return handleDialogue();
+  };
+
+  const restoreHistoryItem = (item) => {
+    setActiveTab(item.tab);
+    setDrafts((d) => ({ ...d, [item.tab]: item.input }));
+    setOutputs((o) => ({ ...o, [item.tab]: item.output }));
+  };
+
+  const removeHistoryItem = (id) => {
+    setHistory((h) => h.filter((x) => x.id !== id));
+  };
+
+  const clearHistory = () => setHistory([]);
+
+  const formatTime = (iso) => {
+    try {
+      const d = new Date(iso);
+      return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+    } catch {
+      return "";
+    }
   };
 
   return (
@@ -129,28 +238,22 @@ const App = () => {
         <section className="mt-24 grid gap-8 md:grid-cols-12">
           <div className="space-y-2 md:col-span-3">
             <button
-              onClick={() => {
-                setActiveTab("refractor");
-                setOutput("");
-              }}
+              type="button"
+              onClick={() => setActiveTab("refractor")}
               className={`flex w-full items-center rounded-2xl px-4 py-3 text-left text-xs uppercase tracking-widest transition-all ${activeTab === "refractor" ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:bg-slate-50"}`}
             >
               <LucideLayers size={14} className="mr-3" /> 因果折射仪
             </button>
             <button
-              onClick={() => {
-                setActiveTab("prompt");
-                setOutput("");
-              }}
+              type="button"
+              onClick={() => setActiveTab("prompt")}
               className={`flex w-full items-center rounded-2xl px-4 py-3 text-left text-xs uppercase tracking-widest transition-all ${activeTab === "prompt" ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:bg-slate-50"}`}
             >
               <LucidePalette size={14} className="mr-3" /> 提示词进化
             </button>
             <button
-              onClick={() => {
-                setActiveTab("dialogue");
-                setOutput("");
-              }}
+              type="button"
+              onClick={() => setActiveTab("dialogue")}
               className={`flex w-full items-center rounded-2xl px-4 py-3 text-left text-xs uppercase tracking-widest transition-all ${activeTab === "dialogue" ? "bg-slate-900 text-white shadow-lg" : "text-slate-400 hover:bg-slate-50"}`}
             >
               <LucideMessageSquare size={14} className="mr-3" /> 游离对话
@@ -169,18 +272,28 @@ const App = () => {
                 {activeTab === "prompt" && "输入你想要的画面核心意向，AI 将为你补全极简风格的技术参数。"}
                 {activeTab === "dialogue" && "在这里，AI 会以一种‘不在场’的清醒视角与你共同探讨哲学命题。"}
               </p>
+              <p className="mt-2 text-[10px] font-light tracking-wide text-slate-300">
+                回车执行 · Shift+Enter 换行
+              </p>
             </div>
 
             <div className="flex flex-grow flex-col space-y-4">
               <div className="relative">
                 <textarea
                   value={input}
-                  onChange={(e) => setInput(e.target.value)}
+                  onChange={(e) => setInputForTab(activeTab, e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && !e.shiftKey) {
+                      e.preventDefault();
+                      if (!loading) void handleSubmit();
+                    }
+                  }}
                   placeholder="在此输入您的思考碎片..."
                   className="h-32 w-full resize-none rounded-[24px] border border-slate-100 bg-slate-50/50 p-6 text-sm font-light transition-all focus:outline-none focus:ring-1 focus:ring-blue-100"
                 />
                 <button
-                  onClick={handleSubmit}
+                  type="button"
+                  onClick={() => void handleSubmit()}
                   disabled={loading}
                   className="absolute bottom-4 right-4 flex items-center rounded-xl bg-slate-900 px-6 py-2 text-xs tracking-widest text-white transition-all hover:bg-slate-800 disabled:opacity-50"
                 >
@@ -212,6 +325,62 @@ const App = () => {
               )}
             </div>
           </div>
+        </section>
+
+        <section className="mt-16 rounded-[28px] border border-slate-100 bg-white p-6 shadow-sm md:p-8">
+          <div className="mb-4 flex items-center justify-between">
+            <h4 className="flex items-center text-xs font-light uppercase tracking-[0.25em] text-slate-500">
+              <LucideHistory size={14} className="mr-2 text-slate-400" />
+              历史记录
+            </h4>
+            {history.length > 0 && (
+              <button
+                type="button"
+                onClick={clearHistory}
+                className="flex items-center text-[10px] uppercase tracking-widest text-slate-400 transition-colors hover:text-slate-600"
+              >
+                <LucideTrash2 size={12} className="mr-1" />
+                清空
+              </button>
+            )}
+          </div>
+          {history.length === 0 ? (
+            <p className="text-xs font-light text-slate-300">成功执行后会自动保存，最多保留 50 条（仅保存在本机浏览器）。</p>
+          ) : (
+            <ul className="max-h-64 space-y-2 overflow-y-auto pr-1">
+              {history.map((item) => (
+                <li
+                  key={item.id}
+                  className="group flex items-start justify-between gap-3 rounded-2xl border border-slate-50 bg-slate-50/40 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                >
+                  <button
+                    type="button"
+                    onClick={() => restoreHistoryItem(item)}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="flex flex-wrap items-center gap-2 text-[10px] text-slate-400">
+                      <span className="rounded-full bg-slate-200/60 px-2 py-0.5 text-slate-600">
+                        {tabLabel(item.tab)}
+                      </span>
+                      <span>{formatTime(item.at)}</span>
+                    </div>
+                    <p className="mt-1 truncate text-xs font-light text-slate-600">
+                      {item.input.replace(/\s+/g, " ").slice(0, 80)}
+                      {item.input.length > 80 ? "…" : ""}
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => removeHistoryItem(item.id)}
+                    className="shrink-0 rounded-lg p-1.5 text-slate-300 opacity-0 transition-all hover:bg-white hover:text-slate-500 group-hover:opacity-100"
+                    aria-label="删除此条"
+                  >
+                    <LucideTrash2 size={14} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
 
         <footer className="mt-32 flex flex-col justify-between border-t border-slate-100 pt-12 text-[10px] uppercase tracking-[0.2em] text-slate-300 md:flex-row">
